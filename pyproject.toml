@@ -1,0 +1,18 @@
+[build-system]
+requires = ["setuptools>=61", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "emm42-driver"
+version = "0.1.0"
+description = "Python driver for EMM42 V5 stepper motor controller (ZDT 张大头)"
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = ["pyserial>=3.5"]
+
+[project.optional-dependencies]
+dev = ["pytest>=7", "pytest-cov"]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["emm42*"]

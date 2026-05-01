@@ -1,0 +1,404 @@
+Metadata-Version: 2.4
+Name: emm42-driver
+Version: 0.1.0
+Summary: Python driver for EMM42 V5 stepper motor controller (ZDT 张大头)
+Requires-Python: >=3.9
+Description-Content-Type: text/markdown
+Requires-Dist: pyserial>=3.5
+Provides-Extra: dev
+Requires-Dist: pytest>=7; extra == "dev"
+Requires-Dist: pytest-cov; extra == "dev"
+
+# emm42-driver
+
+**English** | [中文](#中文说明)
+
+Python driver for the **EMM42 V5** closed-loop stepper motor controller by ZDT (张大头).
+
+---
+
+## Table of Contents / 目录
+
+- [Install](#install)
+- [Quick Start](#quick-start)
+- [Session & Connection Options](#session--connection-options)
+- [API Reference](#api-reference)
+- [Checksum Modes](#checksum-modes)
+- [Multi-axis Sync](#multi-axis-sync)
+- [Run Tests](#run-tests)
+- [Known Limitations](#known-limitations)
+- [中文说明](#中文说明)
+
+---
+
+## Install
+
+```bash
+pip install -e .
+```
+
+`pyserial>=3.5` is pulled in automatically. For development extras (pytest, coverage):
+
+```bash
+pip install -e ".[dev]"
+```
+
+---
+
+## Quick Start
+
+```python
+from emm42 import Session, MotorDevice
+
+sess = Session(port="COM15", baudrate=115200, address=1)
+with MotorDevice(sess) as motor:
+    motor.enable()
+
+    # Velocity mode — spin at 300 RPM for 3 seconds
+    motor.velocity(direction=0, rpm=300, acceleration=50)
+    import time; time.sleep(3)
+    motor.stop()
+
+    # Read back state
+    pos = motor.read_position()
+    print(f"Position : {pos:.2f}°")
+    print(f"Velocity : {motor.read_velocity()} RPM")
+    print(f"Status   : {motor.read_status()}")
+```
+
+---
+
+## Session & Connection Options
+
+```python
+from emm42 import Session
+from emm42.protocol.codec import ChecksumMode
+
+sess = Session(
+    port="COM15",           # Windows: "COM15"  /  Linux: "/dev/ttyUSB0"
+    baudrate=115200,        # must match device setting (default 115200)
+    address=1,              # device address 1–255 (default 1)
+    checksum_mode=ChecksumMode.FIXED_6B,  # FIXED_6B | XOR | CRC8 | MODBUS
+    timeout=0.5,            # serial read timeout in seconds
+)
+```
+
+List available serial ports:
+
+```python
+from emm42.transport import Transport
+print(Transport.list_available_ports())
+```
+
+---
+
+## API Reference
+
+All methods are on `MotorDevice`. Open/close the connection with `open()` / `close()` or use it as a context manager (`with` statement).
+
+### Motion Control
+
+| Method | Description |
+|--------|-------------|
+| `enable(sync=False)` | Enable motor (使能) |
+| `disable(sync=False)` | Disable / de-energise motor |
+| `velocity(direction, rpm, acceleration, sync=False)` | Continuous velocity mode (速度模式). `direction`: 0=CW, 1=CCW; `rpm`: 0–5000 |
+| `position(direction, rpm, acceleration, pulses, relative=True, sync=False)` | Position move (位置模式). Default `pulses=1600` = one revolution at 16-microstep |
+| `stop(sync=False)` | Immediate stop (急停) |
+| `sync_trigger()` | Fire multi-axis synchronous motion (多机同步触发) |
+
+### Read — Motion State
+
+| Method | Returns | Description |
+|--------|---------|-------------|
+| `read_position()` | `float` (°) | Real-time position angle (实时位置角度) |
+| `read_target_position()` | `float` (°) | Target position angle (目标位置角度) |
+| `read_position_error()` | `float` (°) | Position error (位置角度误差) |
+| `read_velocity()` | `int` RPM | Real-time velocity; negative = CCW (实时转速) |
+| `read_encoder()` | `int` | Raw signed encoder count (编码器线性值) |
+
+### Read — Electrical
+
+| Method | Returns | Description |
+|--------|---------|-------------|
+| `read_bus_voltage()` | `int` mV | Bus voltage (总线电压) |
+| `read_phase_current()` | `int` mA | Phase current (相电流) |
+| `read_phase_rl()` | `dict` | `{"resistance_mohm", "inductance_uh"}` |
+
+### Read — Status & Config
+
+| Method | Returns | Description |
+|--------|---------|-------------|
+| `read_status()` | `dict` | `{enabled, in_position, stalled, stall_protection}` |
+| `read_origin_status()` | `dict` | `{is_homing, homing_failed}` |
+| `read_firmware_version()` | `dict` | `{"hw_version", "fw_version"}` |
+| `read_pid_params()` | `dict` | `{"kp", "ki", "kd"}` |
+| `read_drive_config()` | `dict` | All 20 drive-config fields (see docstring) |
+| `read_system_state()` | `dict` | All 13 monitoring fields in one call |
+
+### Homing
+
+```python
+motor.homing_set_origin(store=True)       # mark current position as zero
+motor.homing_trigger(mode=0)              # trigger return-to-origin
+motor.homing_interrupt()                  # abort homing
+motor.read_origin_status()                # {"is_homing", "homing_failed"}
+motor.modify_origin_params(
+    mode=0, direction=0, speed_rpm=30,
+    timeout_ms=10000, stall_speed_rpm=300,
+    stall_current_ma=800, stall_time_ms=60,
+    power_on_trigger=False, store=True,
+)
+```
+
+Homing modes: `0`=nearest, `1`=single-turn direction, `2`=multi-turn, `3`=limit switch.
+
+### Write — Parameters
+
+```python
+motor.write_pid_params(kp=32000, ki=100, kd=32000, store=False)
+motor.write_id_address(new_addr=2)         # reconnect with address=2 after this
+motor.write_drive_config(microstep=32, store=True)  # always read_drive_config() first!
+```
+
+### Utility
+
+```python
+motor.reset_position()     # zero position counter (no EEPROM write)
+motor.clear_stall()        # release stall/clog protection latch
+reached = motor.wait_in_position(timeout_s=10.0, poll_interval_s=0.1)
+```
+
+---
+
+## Checksum Modes
+
+The device checksum mode is set in the GUI under **串口设置 → 校验字节**.
+
+| Mode | `ChecksumMode` value | Notes |
+|------|----------------------|-------|
+| Fixed 0x6B (default) | `FIXED_6B` | Factory default |
+| XOR | `XOR` | XOR of all payload bytes |
+| CRC-8 | `CRC8` | CRC-8 lookup table from manual |
+| Modbus RTU | `MODBUS` | CRC-16/Modbus; for PLC integration (V1.2.2+) |
+
+---
+
+## Multi-axis Sync
+
+Set `sync=True` on motion commands to hold execution, then fire all axes at once:
+
+```python
+motor_a.velocity(direction=0, rpm=300, acceleration=0, sync=True)
+motor_b.velocity(direction=0, rpm=200, acceleration=0, sync=True)
+motor_a.sync_trigger()   # both axes start simultaneously
+```
+
+---
+
+## Run Tests
+
+```bash
+python -m pytest tests/ -v
+```
+
+All tests are pure Python and run without hardware.
+
+---
+
+## Known Limitations
+
+- `decode_drive_config_response()` — field layout inferred from the write-command format; **verify on hardware** before using `write_drive_config()`.
+- `decode_system_state_response()` — frame layout inferred from GUI field order; **verify on hardware**.
+- `write_drive_config()` (0x48/0x46) — always call `read_drive_config()` first and confirm the values match your device before issuing a write. Incorrect values can render the device unresponsive.
+
+---
+
+---
+
+# 中文说明
+
+**EMM42 V5** 闭环步进电机驱动器（张大头）Python 驱动库。
+
+---
+
+## 安装
+
+```bash
+pip install -e .
+```
+
+`pyserial>=3.5` 会自动安装。开发依赖（pytest、coverage）：
+
+```bash
+pip install -e ".[dev]"
+```
+
+---
+
+## 快速开始
+
+```python
+from emm42 import Session, MotorDevice
+
+sess = Session(port="COM15", baudrate=115200, address=1)
+with MotorDevice(sess) as motor:
+    motor.enable()
+
+    # 速度模式：300 RPM 运行 3 秒
+    motor.velocity(direction=0, rpm=300, acceleration=50)
+    import time; time.sleep(3)
+    motor.stop()
+
+    # 读取状态
+    pos = motor.read_position()
+    print(f"当前位置：{pos:.2f}°")
+    print(f"当前转速：{motor.read_velocity()} RPM")
+    print(f"电机状态：{motor.read_status()}")
+```
+
+---
+
+## 连接参数说明
+
+```python
+from emm42 import Session
+from emm42.protocol.codec import ChecksumMode
+
+sess = Session(
+    port="COM15",           # Windows 示例。Linux 使用 "/dev/ttyUSB0"
+    baudrate=115200,        # 需与设备波特率一致（默认 115200）
+    address=1,              # 设备地址 1–255（默认 1）
+    checksum_mode=ChecksumMode.FIXED_6B,  # 校验方式，见下表
+    timeout=0.5,            # 串口读取超时（秒）
+)
+```
+
+列出可用串口：
+
+```python
+from emm42.transport import Transport
+print(Transport.list_available_ports())
+```
+
+---
+
+## API 说明
+
+所有方法均位于 `MotorDevice`，可通过 `open()` / `close()` 或 `with` 语句管理连接。
+
+### 运动控制
+
+| 方法 | 说明 |
+|------|------|
+| `enable(sync=False)` | 使能驱动板 |
+| `disable(sync=False)` | 关闭驱动板（断电） |
+| `velocity(direction, rpm, acceleration, sync=False)` | 速度模式。`direction`: 0=顺时针, 1=逆时针；`rpm`: 0–5000 |
+| `position(direction, rpm, acceleration, pulses, relative=True, sync=False)` | 位置模式。默认 `pulses=1600`（16细分时为一圈） |
+| `stop(sync=False)` | 立即急停 |
+| `sync_trigger()` | 触发多机同步运动 |
+
+### 读取 — 运动状态
+
+| 方法 | 返回值 | 说明 |
+|------|--------|------|
+| `read_position()` | `float` (°) | 实时位置角度 |
+| `read_target_position()` | `float` (°) | 目标位置角度 |
+| `read_position_error()` | `float` (°) | 位置角度误差 |
+| `read_velocity()` | `int` RPM | 实时转速（负值=逆时针） |
+| `read_encoder()` | `int` | 编码器线性值（带符号） |
+
+### 读取 — 电气参数
+
+| 方法 | 返回值 | 说明 |
+|------|--------|------|
+| `read_bus_voltage()` | `int` mV | 总线电压 |
+| `read_phase_current()` | `int` mA | 相电流 |
+| `read_phase_rl()` | `dict` | `{"resistance_mohm", "inductance_uh"}` 相电阻/相电感 |
+
+### 读取 — 状态与配置
+
+| 方法 | 返回值 | 说明 |
+|------|--------|------|
+| `read_status()` | `dict` | `{enabled, in_position, stalled, stall_protection}` |
+| `read_origin_status()` | `dict` | `{is_homing, homing_failed}` 回零状态 |
+| `read_firmware_version()` | `dict` | `{"hw_version", "fw_version"}` 固件版本 |
+| `read_pid_params()` | `dict` | `{"kp", "ki", "kd"}` PID 参数 |
+| `read_drive_config()` | `dict` | 全部 20 个驱动参数字段 |
+| `read_system_state()` | `dict` | 一次性读取全部 13 个监控值 |
+
+### 回零操作
+
+```python
+motor.homing_set_origin(store=True)       # 将当前位置设为单圈回零零点
+motor.homing_trigger(mode=0)              # 触发回零
+motor.homing_interrupt()                  # 强制中断并退出回零
+motor.read_origin_status()                # 返回 {"is_homing", "homing_failed"}
+motor.modify_origin_params(
+    mode=0, direction=0, speed_rpm=30,
+    timeout_ms=10000, stall_speed_rpm=300,
+    stall_current_ma=800, stall_time_ms=60,
+    power_on_trigger=False, store=True,
+)
+```
+
+回零模式：`0`=就近回零, `1`=单圈方向回零, `2`=多圈回零, `3`=限位开关回零。
+
+### 写入参数
+
+```python
+motor.write_pid_params(kp=32000, ki=100, kd=32000, store=False)
+motor.write_id_address(new_addr=2)         # 修改后需以 address=2 重新连接
+motor.write_drive_config(microstep=32, store=True)  # 务必先 read_drive_config() 确认字段！
+```
+
+### 工具方法
+
+```python
+motor.reset_position()     # 将当前位置计数清零（不写 EEPROM）
+motor.clear_stall()        # 解除堵转保护锁定
+reached = motor.wait_in_position(timeout_s=10.0, poll_interval_s=0.1)
+```
+
+---
+
+## 校验方式
+
+与设备 **串口设置 → 校验字节** 配置保持一致：
+
+| 模式 | `ChecksumMode` | 说明 |
+|------|----------------|------|
+| 固定 0x6B（出厂默认） | `FIXED_6B` | 出厂默认值 |
+| 异或 | `XOR` | 全部字节异或 |
+| CRC-8 | `CRC8` | 说明书查表 CRC-8 |
+| Modbus RTU | `MODBUS` | CRC-16/Modbus，用于 PLC 集成（固件 V1.2.2+） |
+
+---
+
+## 多机同步
+
+在运动命令中设置 `sync=True` 暂存指令，再统一触发：
+
+```python
+motor_a.velocity(direction=0, rpm=300, acceleration=0, sync=True)
+motor_b.velocity(direction=0, rpm=200, acceleration=0, sync=True)
+motor_a.sync_trigger()   # 两轴同时启动
+```
+
+---
+
+## 运行测试
+
+```bash
+python -m pytest tests/ -v
+```
+
+全部测试为纯 Python，无需连接硬件。
+
+---
+
+## 已知限制与注意事项
+
+- `decode_drive_config_response()` — 字段排列根据写命令格式推断，**请在硬件上验证**后再使用 `write_drive_config()`。
+- `decode_system_state_response()` — 帧布局根据上位机界面字段顺序推断，**请在硬件上验证**。
+- `write_drive_config()` (0x48/0x46) — 写入前务必先调用 `read_drive_config()` 确认字段值与设备一致。字段错误可能导致设备无响应。

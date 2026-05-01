@@ -1,0 +1,8 @@
+{
+    "chat.tools.terminal.autoApprove": {
+        "/^Get-ChildItem -Recurse d:\\\\emm42-python\\\\emm42 \\| Select-Object FullName$/": {
+            "approve": true,
+            "matchCommandLine": true
+        }
+    }
+}
