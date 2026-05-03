@@ -20,6 +20,7 @@ Python driver for the **EMM42 V5** closed-loop stepper motor controller by ZDT (
 ## Table of Contents / 目录
 
 - [Install](#install)
+- [GUI](#gui)
 - [Quick Start](#quick-start)
 - [Session & Connection Options](#session--connection-options)
 - [API Reference](#api-reference)
@@ -42,6 +43,26 @@ pip install -e .
 ```bash
 pip install -e ".[dev]"
 ```
+
+---
+
+## GUI
+
+A tkinter-based desktop GUI is included at `gui.py`. It requires no extra dependencies beyond what is already installed.
+
+```bash
+python gui.py
+```
+
+| Panel | Features |
+|-------|----------|
+| **Connection** | Port list (auto-refresh), baud rate, device address, checksum mode, connect/disconnect |
+| **Motion Control** | Enable / Disable, Velocity mode, Position mode, E-Stop, Reset Position, Clear Stall |
+| **Status Monitor** | Manual or auto-poll (configurable interval); displays position, velocity, voltage, current, status flags |
+| **Homing** | Set origin, trigger homing, interrupt homing |
+| **Log** | Timestamped log of all commands and responses |
+
+> The GUI works without hardware connected — connection errors are shown in the log instead of crashing.
 
 ---
 
@@ -233,6 +254,26 @@ pip install -e .
 ```bash
 pip install -e ".[dev]"
 ```
+
+---
+
+## 图形界面（GUI）
+
+项目根目录包含 `gui.py`，基于 tkinter，无需额外安装依赖。
+
+```bash
+python gui.py
+```
+
+| 面板 | 功能 |
+|------|------|
+| **连接设置** | 串口列表（自动刷新）、波特率、设备地址、校验方式，一键连接/断开 |
+| **运动控制** | 使能/关闭使能、速度模式、位置模式、急停、位置清零、解除堵转 |
+| **状态监控** | 手动或自动轮询（可设间隔），显示位置/速度/电压/电流/状态标志 |
+| **回零** | 设置零点、触发回零、中断回零 |
+| **日志** | 带时间戳，实时显示所有命令与响应 |
+
+> 未连接硬件时，操作不会崩溃，错误信息会显示在日志区域。
 
 ---
 
